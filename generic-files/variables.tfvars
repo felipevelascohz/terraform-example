@@ -1,0 +1,6 @@
+region = "us-east-1"
+profile = "personalacc"
+project_name = "felipevelascohz"
+ambiente = "Investigación y Desarrollo"
+owner = "Felipe Velasco"
+ownerEmail= "felipevelascoi.211@gmail.com"

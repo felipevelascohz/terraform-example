@@ -1,0 +1,125 @@
+name: test-pipeline
+env:
+    TF_ROOT: vpc
+    TF_VAR_repo_url: ${{ github.repositoryUrl }}
+    TF_VAR_repo_commit: ${{ github.sha }} 
+on:
+    workflow_dispatch:
+    pull_request:
+        branches: ["main"]
+        types: ["opened", "synchronize"] 
+jobs:
+    #cancel-workflows:
+    #    runs-on: ubuntu-latest
+    #    steps:
+    #     - name: Cancel Previous Runs
+    #       uses: styfle/cancel-workflow-action@0.9.1
+    scan-code:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - name: run kics Scan
+              if: github.event_name == 'push'
+              uses: checkmarx/kics-github-action@v1.7.0
+              with:
+                path: '${{ env.TF_ROOT }}'
+                fail_on: high,medium
+                output_path: myResults/
+            - name: run kics Scan
+              if: github.event_name == 'pull_request'
+              uses: checkmarx/kics-github-action@v1.7.0
+              with:
+                path: '${{ env.TF_ROOT }}'
+                output_path: myResults/
+                fail_on: high,medium
+                token: ${{ secrets.GITHUB_TOKEN }}
+                ignore_on_exit: results
+                enable_comments: true
+    terraform:
+        defaults:
+            run:
+              working-directory: ${{ env.TF_ROOT }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3 
+            - uses: hashicorp/setup-terraform@v2        
+            - name: Terraform fmt
+              id: fmt
+              run: terraform fmt -check
+              continue-on-error: true          
+            - name: Terraform Init
+              id: init
+              run: terraform init
+              env:
+                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}               
+            - name: Terraform Validate
+              id: validate
+              run: terraform validate -no-color          
+            - name: Terraform Plan
+              id: plan
+              run: terraform plan -no-color --var-file=../generic-files/variables.tfvars
+              continue-on-error: true   
+              env:
+                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}  
+                AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+#            - uses: actions/github-script@v6
+#              if: github.event_name == 'pull_request'
+#              env:
+#                PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+#              with:
+#                github-token: ${{ secrets.GITHUB_TOKEN }}
+#                script: |
+#                    // 1. Retrieve existing bot comments for the PR
+#                    const { data: comments } = await github.rest.issues.listComments({
+#                    owner: context.repo.owner,
+#                    repo: context.repo.repo,
+#                    issue_number: context.issue.number,
+#                    })
+#                    const botComment = comments.find(comment => {
+#                    return comment.user.type === 'Bot' && comment.body.includes('Terraform Format and Style')
+#                    })
+#            
+#                    // 2. Prepare format of the comment
+#                    const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+#                    #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+#                    #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+#                    <details><summary>Validation Output</summary>
+#            
+#                    \`\`\`\n
+#                    ${{ steps.validate.outputs.stdout }}
+#                    \`\`\`
+#            
+#                    </details>
+#            
+#                    #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+#            
+#                    <details><summary>Show Plan</summary>
+#            
+#                    \`\`\`\n
+#                    ${process.env.PLAN}
+#                    \`\`\`
+#            
+#                    </details>
+#            
+#                    *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ env.tf_actions_working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+#            
+#                    // 3. If we have a comment, update it, otherwise create a new one
+#                    if (botComment) {
+#                    github.rest.issues.updateComment({
+#                        owner: context.repo.owner,
+#                        repo: context.repo.repo,
+#                        comment_id: botComment.id,
+#                        body: output
+#                    })
+#                    } else {
+#                    github.rest.issues.createComment({
+#                        issue_number: context.issue.number,
+#                        owner: context.repo.owner,
+#                        repo: context.repo.repo,
+#                        body: output
+#                    })
+#                    }
+    
